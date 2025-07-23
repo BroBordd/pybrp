@@ -277,5 +277,5 @@ if __name__ == "__main__":
     print(f"Decompressing '{input_file}' to '{output_file}'...")
     decompress_replay_file(input_file, output_file)
     print("Calculating replay duration...")
-    duration = get_replay_duration(output_filr)
+    duration = get_replay_duration(output_file)
     print(f"Replay duration: {duration:.2f} seconds")
