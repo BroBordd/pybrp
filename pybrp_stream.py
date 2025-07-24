@@ -1,4 +1,3 @@
-import sys
 from struct import unpack
 
 Z = lambda _:[0]*_
