@@ -1,281 +1,166 @@
-from struct import unpack, pack, error
-import os
-
-# region Decompression Code
+Z = lambda _:[0]*_
 G_FREQS = [
-    101342, 9667, 3497, 1072, 0, 3793, 0, 0, 2815, 5235, 0, 0, 0, 3570, 0, 0,
-    0, 1383, 0, 0, 0, 2970, 0, 0, 2857, 0, 0, 0, 0, 0, 0, 0,
-    0, 1199, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1494,
-    1974, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1351, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1475,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    101342,9667,3497,1072,0,3793,*Z(2),2815,5235,*Z(3),3570,*Z(3),
+    1383,*Z(3),2970,*Z(2),2857,*Z(8),1199,*Z(30),
+    1494,1974,*Z(12),1351,*Z(122),1475,*Z(65)
 ]
+CMD_NAMES={0:'BaseTimeStep',1:'StepSceneGraph',2:'AddSceneGraph',3:'RemoveSceneGraph',4:'AddNode',5:'NodeOnCreate',6:'SetForegroundScene',7:'RemoveNode',8:'AddMaterial',9:'RemoveMaterial',10:'AddMaterialComponent',11:'AddTexture',12:'RemoveTexture',13:'AddMesh',14:'RemoveMesh',15:'AddSound',16:'RemoveSound',17:'AddCollisionMesh',18:'RemoveCollisionMesh',19:'ConnectNodeAttribute',20:'NodeMessage',21:'SetNodeAttrFloat',22:'SetNodeAttrInt32',23:'SetNodeAttrBool',24:'SetNodeAttrFloats',25:'SetNodeAttrInt32s',26:'SetNodeAttrString',27:'SetNodeAttrNode',28:'SetNodeAttrNodeNull',29:'SetNodeAttrNodes',30:'SetNodeAttrPlayer',31:'SetNodeAttrPlayerNull',32:'SetNodeAttrMaterials',33:'SetNodeAttrTexture',34:'SetNodeAttrTextureNull',35:'SetNodeAttrTextures',36:'SetNodeAttrSound',37:'SetNodeAttrSoundNull',38:'SetNodeAttrSounds',39:'SetNodeAttrMesh',40:'SetNodeAttrMeshNull',41:'SetNodeAttrMeshes',42:'SetNodeAttrCollisionMesh',43:'SetNodeAttrCollisionMeshNull',44:'SetNodeAttrCollisionMeshes',45:'PlaySoundAtPosition',46:'PlaySound',47:'EmitBGDynamics',48:'EndOfFile',49:'DynamicsCorrection',50:'ScreenMessageBottom',51:'ScreenMessageTop',52:'AddData',53:'RemoveData',54:'CameraShake'}
 
-class Huffman:
-    class Node:
+class _H:
+    class _N:
         def __init__(self):
-            self.left_child = -1
-            self.right_child = -1
-            self.parent = 0
-            self.frequency = 0
-
+            self.l,self.r,self.p,self.f=-1,-1,0,0
     def __init__(self):
-        self.nodes = [self.Node() for _ in range(511)]
-        self._build()
-
-    def _build(self):
-        for i in range(256):
-            self.nodes[i].frequency = G_FREQS[i]
-
-        node_count = 256
-        while node_count < 511:
-            smallest1 = -1
-            smallest2 = -1
-            
-            i = 0
-            while self.nodes[i].parent != 0: i += 1
-            smallest1 = i
-            i += 1
-            while self.nodes[i].parent != 0: i += 1
-            smallest2 = i
-            i += 1
-            
-            while i < node_count:
-                if self.nodes[i].parent == 0:
-                    if self.nodes[smallest1].frequency > self.nodes[smallest2].frequency:
-                        if self.nodes[i].frequency < self.nodes[smallest1].frequency:
-                            smallest1 = i
-                    else:
-                        if self.nodes[i].frequency < self.nodes[smallest2].frequency:
-                            smallest2 = i
-                i += 1
-            
-            self.nodes[node_count].frequency = self.nodes[smallest1].frequency + self.nodes[smallest2].frequency
-            self.nodes[smallest1].parent = node_count - 255
-            self.nodes[smallest2].parent = node_count - 255
-            self.nodes[node_count].right_child = smallest1
-            self.nodes[node_count].left_child = smallest2
-            
-            node_count += 1
-
-    def decompress(self, src):
-        if not src:
-            return b''
-        
-        length = len(src)
-        
-        remainder = src[0] & 0x0F
-        compressed = src[0] >> 7
-
-        if compressed:
-            out = bytearray()
-            ptr = src[1:]
-            
-            bit_length = (length - 1) * 8
-            if remainder > bit_length:
-                 raise ValueError("Invalid huffman data: remainder bits > total bits")
-            bit_length -= remainder
-            
-            bit = 0
-
-            while bit < bit_length:
-                mode_bit = (ptr[bit >> 3] >> (bit & 7)) & 1
-                bit += 1
-
-                if mode_bit:
-                    n = 510
-                    while n >= 256:
-                        if bit >= bit_length:
-                            raise ValueError("Incomplete Huffman code at end of stream")
-                        
-                        path_bit = (ptr[bit >> 3] >> (bit & 7)) & 1
-                        bit += 1
-                        
-                        n = self.nodes[n].left_child if path_bit == 0 else self.nodes[n].right_child
-                    out.append(n)
-
-                else:
-                    if bit + 8 > bit_length:
-                        break
-
-                    byte_index = bit >> 3
-                    bit_in_byte = bit & 7
-                    
-                    if bit_in_byte == 0:
-                        val = ptr[byte_index]
-                    else:
-                        val = (ptr[byte_index] >> bit_in_byte) | (ptr[byte_index + 1] << (8 - bit_in_byte))
-                    
-                    out.append(val & 0xFF)
-                    bit += 8
-            return bytes(out)
-        else:
-            return src
-
-class Replay:
-    def __init__(self, input_stream):
-        self.input = input_stream
-        self.bytes_seeked = 0
-
-    def get_file_size(self):
-        current_pos = self.input.tell()
-        self.input.seek(0, 2)
-        file_size = self.input.tell()
-        self.input.seek(current_pos)
-        return file_size
-
-    def decompress_to(self, output_path):
-        huffman = Huffman()
-        with open(output_path, 'wb') as output:
-            self._write_header(output)
-            self._write_decompressed_data(output, huffman)
-
-    def _write_header(self, output):
-        self.input.seek(0)
-        header_data = self.input.read(6)
-        output.write(header_data)
-        self.bytes_seeked = 6
-
-    def _write_decompressed_data(self, output, huffman):
-        file_size = self.get_file_size()
-        self.input.seek(self.bytes_seeked)
-
-        while self.bytes_seeked < file_size:
-            initial_byte_data = self.input.read(1)
-            if not initial_byte_data:
-                break
-            initial_byte = initial_byte_data[0]
-            self.bytes_seeked += 1
-            
-            message_size = 0
-            if initial_byte < 254:
-                message_size = initial_byte
-            elif initial_byte == 254:
-                data = self.input.read(2)
-                message_size = unpack('<H', data)[0]
-                self.bytes_seeked += 2
+        self.nodes=[self._N()for _ in range(511)]
+        for i in range(256):self.nodes[i].f=G_FREQS[i]
+        nc=256
+        while nc<511:
+            s1,s2=-1,-1
+            i=0
+            while self.nodes[i].p!=0:i+=1
+            s1=i;i+=1
+            while self.nodes[i].p!=0:i+=1
+            s2=i;i+=1
+            while i<nc:
+                if self.nodes[i].p==0:
+                    if self.nodes[s1].f>self.nodes[s2].f:
+                        if self.nodes[i].f<self.nodes[s1].f:s1=i
+                    elif self.nodes[i].f<self.nodes[s2].f:s2=i
+                i+=1
+            self.nodes[nc].f=self.nodes[s1].f+self.nodes[s2].f
+            self.nodes[s1].p=self.nodes[s2].p=nc-255
+            self.nodes[nc].r,self.nodes[nc].l=s1,s2
+            nc+=1
+    def decompress(self,src):
+        if not src:return b''
+        rem,comp=src[0]&15,src[0]>>7
+        if not comp:return src
+        out,ptr,l=bytearray(),src[1:],len(src)
+        bl=((l-1)*8)-rem;bit=0
+        while bit<bl:
+            m_bit=(ptr[bit>>3]>>(bit&7))&1;bit+=1
+            if m_bit:
+                n=510
+                while n>=256:
+                    if bit>=bl:raise ValueError("Incomplete Huffman code")
+                    p_bit=(ptr[bit>>3]>>(bit&7))&1;bit+=1
+                    n=self.nodes[n].l if p_bit==0 else self.nodes[n].r
+                out.append(n)
             else:
-                data = self.input.read(4)
-                message_size = unpack('<I', data)[0]
-                self.bytes_seeked += 4
-            
-            if message_size > 0:
-                message = self.input.read(message_size)
-                self.bytes_seeked += message_size
-                
-                result = huffman.decompress(message)
-                
-                len32 = len(result)
+                if bit+8>bl:break
+                bi,b_in_b=bit>>3,bit&7
+                val=ptr[bi]if b_in_b==0 else(ptr[bi]>>b_in_b)|(ptr[bi+1]<<(8-b_in_b))
+                out.append(val&255);bit+=8
+        return bytes(out)
 
-                if len32 < 254:
-                    output.write(pack('<B', len32))
-                elif len32 <= 65535:
-                    output.write(pack('<B', 254))
-                    output.write(pack('<H', len32))
-                else:
-                    output.write(pack('<B', 255))
-                    output.write(pack('<I', len32))
-                
-                output.write(result)
-
-def decompress_replay_file(input_path, output_path):
-    with open(input_path, 'rb') as f:
-        replay = Replay(f)
-        replay.decompress_to(output_path)
-# endregion
-
-# region Duration Calculation Code
-def get_replay_duration(raw_data_path):
-    """
-    Calculates the total duration of a replay from its raw,
-    decompressed data file.
-    """
-    
-    # Constants derived from the C++ source code
-    BA_MESSAGE_SESSION_COMMANDS = 1
-    SESSION_COMMAND_K_BASE_TIME_STEP = 0
-
-    total_milliseconds = 0
-
-    with open(raw_data_path, 'rb') as f:
-        # Skip the 6-byte file header (ID & protocol version)
+def get_data(_h, brp_path, progress=None):
+    time_ms, out_data = 0, {}
+    with open(brp_path, 'rb') as f:
+        f.seek(0,2)
+        total_size = f.tell()
         f.seek(6)
-        
-        # Read the stream of top-level messages
         while True:
-            # Read the variable-length size of the message chunk
-            len_byte_data = f.read(1)
-            if not len_byte_data:
-                break # End of file
-            
-            len8 = len_byte_data[0]
-            msg_len = 0
-            if len8 < 254:
-                msg_len = len8
-            elif len8 == 254:
-                msg_len = unpack('<H', f.read(2))[0]
+            if progress: progress(f.tell(), total_size)
+            b_data = f.read(1)
+            if not b_data:
+                break
+            b1, comp_len = b_data[0], 0
+            if b1 < 254:
+                comp_len = b1
+            elif b1 == 254:
+                comp_len = int.from_bytes(f.read(2), 'little')
             else: # 255
-                msg_len = unpack('<I', f.read(4))[0]
-                
-            # Read the message data
-            message_data = f.read(msg_len)
+                comp_len = int.from_bytes(f.read(4), 'little')
+            if comp_len == 0:
+                continue
+            raw_msg = _h.decompress(f.read(comp_len))
+            if not raw_msg or raw_msg[0] != 1:
+                continue
+            sub_off = 1
+            while sub_off < len(raw_msg):
+                try:
+                    sub_size = int.from_bytes(raw_msg[sub_off:sub_off+2], 'little')
+                except IndexError:
+                    break
+                except ValueError:
+                    break
+                sub_data = raw_msg[sub_off+2:sub_off+2+sub_size]
+                if not sub_data:
+                    sub_off += 2 + sub_size
+                    continue
+                cmd_id = sub_data[0]
+                if cmd_id == 0:
+                    time_ms += sub_data[1]
+                else:
+                    if time_ms not in out_data: out_data[time_ms] = []
+                    out_data[time_ms].append({'name': CMD_NAMES.get(cmd_id, 'Unknown'), 'data_hex': sub_data.hex()})
+                sub_off += 2 + sub_size
+    if progress: progress(total_size, total_size)
+    return out_data
 
-            if not message_data: continue
+def get_duration(_h, brp_path, progress=None):
+    total_ms = 0
+    with open(brp_path, 'rb') as f:
+        f.seek(0,2)
+        total_size = f.tell()
+        f.seek(6)
+        while True:
+            if progress: progress(f.tell(), total_size)
+            b_data = f.read(1)
+            if not b_data:
+                break
+            b1, comp_len = b_data[0], 0
+            if b1 < 254:
+                comp_len = b1
+            elif b1 == 254:
+                comp_len = int.from_bytes(f.read(2), 'little')
+            else: # 255
+                comp_len = int.from_bytes(f.read(4), 'little')
+            if comp_len == 0:
+                continue
+            raw_msg = _h.decompress(f.read(comp_len))
+            if not raw_msg or raw_msg[0] != 1:
+                continue
+            sub_off = 1
+            while sub_off < len(raw_msg):
+                try:
+                    sub_size = int.from_bytes(raw_msg[sub_off:sub_off+2], 'little')
+                except IndexError:
+                    break
+                except ValueError:
+                    break
+                sub_data = raw_msg[sub_off+2:sub_off+2+sub_size]
+                if sub_data and sub_data[0] == 0:
+                    total_ms += sub_data[1]
+                sub_off += 2 + sub_size
+    if progress: progress(total_size, total_size)
+    return total_ms
 
-            # We only care about BA_MESSAGE_SESSION_COMMANDS packets
-            if message_data[0] == BA_MESSAGE_SESSION_COMMANDS:
-                # This message is a container for sub-commands.
-                # The first byte is the container ID, so we start parsing at offset 1.
-                sub_offset = 1
-                while sub_offset < len(message_data):
-                    # Read the 2-byte size of the sub-command
-                    try:
-                        sub_size = unpack('<H', message_data[sub_offset : sub_offset + 2])[0]
-                    except error:
-                        # Reached a malformed part of the packet; stop parsing this chunk.
-                        break
-                    
-                    # Extract the sub-command data
-                    sub_data = message_data[sub_offset + 2 : sub_offset + 2 + sub_size]
-
-                    if not sub_data:
-                        # Move to the next sub-command
-                        sub_offset += (2 + sub_size)
-                        continue
-
-                    # Check if this sub-command is our time-step command
-                    if sub_data[0] == SESSION_COMMAND_K_BASE_TIME_STEP:
-                        # The second byte of this command is the number of milliseconds
-                        num_millis = sub_data[1]
-                        total_milliseconds += num_millis
-                    
-                    # Move to the next sub-command
-                    sub_offset += (2 + sub_size)
-
-    duration_seconds = total_milliseconds / 1000.0
-    return duration_seconds
-# endregion
-
-
-if __name__ == "__main__":
-    from sys import argv, stderr, exit
-    if len(argv) < 3:
-        print(f"Usage: python {argv[0]} <input_replay_file.brp> <output_raw_file>", file=stderr)
-        exit(1)
-    input_file = argv[1]
-    output_file = argv[2]
-    print(f"Decompressing '{input_file}' to '{output_file}'...")
-    decompress_replay_file(input_file, output_file)
-    print("Calculating replay duration...")
-    duration = get_replay_duration(output_file)
-    print(f"Replay duration: {duration:.2f} seconds")
+def decompress(_h, brp_path, output_path, progress=None):
+    with open(brp_path, 'rb') as f_in, open(output_path, 'wb') as f_out:
+        f_in.seek(0,2)
+        total_size = f_in.tell()
+        f_out.write(f_in.read(6))
+        while True:
+            if progress: progress(f.tell(), total_size)
+            b_data = f_in.read(1)
+            if not b_data:
+                break
+            b1, m_len = b_data[0], 0
+            if b1 < 254:
+                m_len = b1
+            elif b1 == 254:
+                m_len = int.from_bytes(f_in.read(2), 'little')
+            else: # 255
+                m_len = int.from_bytes(f_in.read(4), 'little')
+            if m_len > 0:
+                decomp_data = _h.decompress(f_in.read(m_len))
+                l32 = len(decomp_data)
+                if l32 < 254:
+                    f_out.write(bytes([l32]))
+                elif l32 <= 65535:
+                    f_out.write(bytes([254]));f_out.write(l32.to_bytes(2,'little'))
+                else:
+                    f_out.write(bytes([255]));f_out.write(l32.to_bytes(4,'little'))
+                f_out.write(decomp_data)
+    if progress: progress(total_size, total_size)

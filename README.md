@@ -1,13 +1,20 @@
 # pybrp
 Simple Python utility for BombSquad's replay files.
 
-# Features
-- Decompresses .brp files into raw data
-- Can calculate a replay's duration using raw data
-- Inline variant for byte-level usage in memory
-- Stream variant to calculate time on the fly
-
-# Usage
-```shell
-python pybrp.py <input_replay_file.brp> <output_raw_file>
+# Inline Usage
+```Python
+>>> import pybrp
+>>> # initialize huffman
+>>> _h = pybrp._H()
+>>> # file in, file out
+>>> fi: str = 'nice.brp'
+>>> fo: str = 'nice.raw'
+>>> # decompress into raw bytes
+>>> pybrp.decompress(_h,fi,fo)
+>>> # get duration in milleseconds
+>>> ms: int = pybrp.get_duration(_h,fi)
+>>> # get events by timestamp
+>>> stamp: int = 123
+>>> data: dict = pybrp.get_data(_h,fi)
+>>> events: list = data[stamp]
 ```
