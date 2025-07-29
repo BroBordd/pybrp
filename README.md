@@ -1,166 +1,97 @@
 # pybrp
 
-The **pybrp** library provides a set of Python utilities for interacting with `.brp` files. These files appear to be a proprietary binary format, likely used for representing scene graph data, game commands, or other time-sequenced event streams. The library encompasses functionalities for decompression, parsing, and data extraction, including total duration and detailed event payloads.
+`pybrp` is a Python library designed for parsing and interacting with `.brp` binary files. These files typically contain time-sequenced scene graph data or game commands.
 
 ## Features
 
-* **Huffman Decompression**: Implements a custom Huffman decompression algorithm specifically tailored for the `.brp` file structure.
-* **File Decompression**: Supports decompressing the internal message payloads of an entire `.brp` file, writing the uncompressed data to a new output file. The file's structural elements (e.g., headers, message length indicators) are preserved.
-* **Duration Calculation**: Efficiently determines the total duration (in milliseconds) of recorded events within a `.brp` file, avoiding full command parsing for this operation.
-* **Data Extraction and Parsing**: Extracts and parses individual commands and their arguments from `.brp` files. The output is a structured dictionary, with support for various command types and their native data formats (float, integer, boolean, string, array types).
-* **Progress Tracking**: All file processing functions offer an optional progress callback, suitable for integration into user interfaces or logging systems.
+* **Huffman Decompression**: Efficiently decompresses `.brp` file contents using a custom Huffman algorithm.
+* **File Decompression Utility**: Provides a function to decompress entire `.brp` files, writing the uncompressed message streams to a new file.
+* **Event Duration Calculation**: Quickly determines the total duration (in milliseconds) of events within a `.brp` file without full content parsing.
+* **Structured Data Extraction**: Parses commands and their arguments from `.brp` files into a structured dictionary, supporting various native data types.
+* **Progress Monitoring**: All major file operations support an optional callback for progress updates.
 
 ## Installation
 
-This library is distributed as a single Python module. To integrate it into your project, simply copy `pybrp.py` into your project directory or make it accessible on your Python path.
+Simply include the `pybrp.py` file directly in your project.
 
 ## Usage
 
-To utilize the library, begin by importing the necessary components and instantiating the Huffman decompressor:
+Start by importing the necessary components and initializing the decompressor:
 
 ```python
 from pybrp import _H, get_duration, decompress, get_data
 
-# Initialize the Huffman decompressor instance
+# Initialize the Huffman decompressor
 huffman_decompressor = _H()
 
-# Define a common progress callback function for examples
-def print_progress(current, total):
-    print(f"Progress: {current}/{total} bytes ({current/total:.2%})", end='\r')
+# Optional: A simple progress callback for file operations
+def console_progress(current, total):
+    print(f"Processing: {current/total:.1%} ({current}/{total} bytes)", end='\r')
 ```
 
-### Calculating File Duration
+### Get Total Event Duration
 
-To retrieve the total elapsed time of events within a `.brp` file:
-
-**Signature:** `get_duration(_h, brp_path, progress=None)`
+Calculate the total duration of events in a `.brp` file:
 
 ```python
 brp_file_path = "path/to/your/file.brp"
 
-# Example 1: Calculate duration without progress tracking
 try:
-    total_ms = get_duration(huffman_decompressor, brp_file_path)
-    print(f"Total duration (no progress): {total_ms} ms")
-except FileNotFoundError:
-    print(f"Error: Source file not found at {brp_file_path}")
-except ValueError as e:
-    print(f"Error processing file: {e}")
-
-# Example 2: Calculate duration with progress tracking
-try:
-    total_ms_with_progress = get_duration(huffman_decompressor, brp_file_path, progress=print_progress)
-    print(f"\nTotal duration (with progress): {total_ms_with_progress} ms")
-except FileNotFoundError:
-    print(f"Error: Source file not found at {brp_file_path}")
-except ValueError as e:
-    print(f"Error processing file: {e}")
+    total_ms = get_duration(huffman_decompressor, brp_file_path, progress=console_progress)
+    print(f"\nTotal event duration: {total_ms} ms")
+except Exception as e:
+    print(f"Error getting duration: {e}")
 ```
 
-### Decompressing a .brp File
+### Decompress a .brp File
 
-To decompress the message payloads within a `.brp` file, writing the result to a new file:
-
-**Signature:** `decompress(_h, brp_path, output_path, progress=None)`
+Decompress the internal messages of a `.brp` file to a new, structurally similar file:
 
 ```python
-input_brp_path = "path/to/your/compressed.brp"
-output_brp_path = "path/to/your/decompressed.brp"
+input_path = "path/to/your/compressed.brp"
+output_path = "path/to/your/decompressed.brp"
 
-# Example 1: Decompress without progress tracking
 try:
-    decompress(huffman_decompressor, input_brp_path, output_brp_path)
-    print(f"\nDecompression complete (no progress): '{input_brp_path}' -> '{output_brp_path}'")
-except FileNotFoundError:
-    print(f"Error: Input file not found at {input_brp_path}")
+    decompress(huffman_decompressor, input_path, output_path, progress=console_progress)
+    print(f"\nFile decompressed to: {output_path}")
 except Exception as e:
-    print(f"Error during decompression: {e}")
-
-# Example 2: Decompress with progress tracking
-output_brp_path_with_progress = "path/to/your/decompressed_with_progress.brp"
-try:
-    decompress(huffman_decompressor, input_brp_path, output_brp_path_with_progress, progress=print_progress)
-    print(f"\nDecompression complete (with progress): '{input_brp_path}' -> '{output_brp_path_with_progress}'")
-except FileNotFoundError:
-    print(f"Error: Input file not found at {input_brp_path}")
-except Exception as e:
-    print(f"Error during decompression: {e}")
+    print(f"Error decompressing file: {e}")
 ```
 
-### Extracting and Parsing Data
+### Extract and Parse Event Data
 
-To obtain a structured representation of all commands and their arguments, grouped by timestamp:
-
-**Signature:** `get_data(_h, brp_path, as_hex=False, progress=None)`
+Retrieve structured event data from a `.brp` file. By default, arguments are parsed into Python types.
 
 ```python
 brp_file_path = "path/to/your/file.brp"
 
-# Example 1: Extract and parse data (default: as_hex=False, no progress)
 try:
-    event_data_parsed = get_data(huffman_decompressor, brp_file_path)
-    print("\nExtracted Event Data (Parsed, No Progress):")
-    # Display a snippet to avoid overwhelming output
-    for timestamp, commands in list(event_data_parsed.items())[:3]: # Show first 3 timestamps
-        print(f"Timestamp: {timestamp} ms")
-        for command in commands[:1]: # Show first command per timestamp
-            print(f"  - Command: {command['name']}, Args: {command.get('args', 'N/A')}")
-except FileNotFoundError:
-    print(f"Error: File not found at {brp_file_path}")
-except ValueError as e:
-    print(f"Error processing file: {e}")
+    event_data = get_data(huffman_decompressor, brp_file_path, progress=console_progress)
+    print("\nExtracted Event Data Sample:")
+    for timestamp, commands in list(event_data.items())[:5]: # Showing first 5 timestamps
+        print(f"  Timestamp: {timestamp} ms")
+        for command in commands[:2]: # Showing first 2 commands per timestamp
+            print(f"    - Command: {command['name']}, Args: {command.get('args', 'N/A')}")
 
-# Example 2: Extract data as raw hex (as_hex=True, no progress)
-try:
-    event_data_hex = get_data(huffman_decompressor, brp_file_path, as_hex=True)
-    print("\nExtracted Event Data (Raw Hex, No Progress):")
-    for timestamp, commands in list(event_data_hex.items())[:3]: # Show first 3 timestamps
-        print(f"Timestamp: {timestamp} ms")
-        for command in commands[:1]: # Show first command per timestamp
-            print(f"  - Command: {command['name']}, Raw Data (Hex): {command.get('data_hex', 'N/A')}")
-except FileNotFoundError:
-    print(f"Error: File not found at {brp_file_path}")
-except ValueError as e:
-    print(f"Error processing file: {e}")
+    # To retrieve raw hexadecimal payloads (useful for unknown commands or debugging parsing issues):
+    # raw_event_data = get_data(huffman_decompressor, brp_file_path, as_hex=True, progress=console_progress)
+    # print("\nRaw Event Data Sample (Hex):")
+    # for timestamp, commands in list(raw_event_data.items())[:1]: # Showing first timestamp
+    #     for command in commands[:1]: # Showing first command
+    #         print(f"    - Command: {command['name']}, Data Hex: {command.get('data_hex', 'N/A')}")
 
-# Example 3: Extract and parse data with progress (as_hex=False, progress=print_progress)
-try:
-    event_data_parsed_progress = get_data(huffman_decompressor, brp_file_path, as_hex=False, progress=print_progress)
-    print("\nExtracted Event Data (Parsed, With Progress):")
-    for timestamp, commands in list(event_data_parsed_progress.items())[:3]: # Show first 3 timestamps
-        print(f"Timestamp: {timestamp} ms")
-        for command in commands[:1]: # Show first command per timestamp
-            print(f"  - Command: {command['name']}, Args: {command.get('args', 'N/A')}")
-except FileNotFoundError:
-    print(f"Error: File not found at {brp_file_path}")
-except ValueError as e:
-    print(f"Error processing file: {e}")
-
-# Example 4: Extract data as raw hex with progress (as_hex=True, progress=print_progress)
-try:
-    event_data_hex_progress = get_data(huffman_decompressor, brp_file_path, as_hex=True, progress=print_progress)
-    print("\nExtracted Event Data (Raw Hex, With Progress):")
-    for timestamp, commands in list(event_data_hex_progress.items())[:3]: # Show first 3 timestamps
-        print(f"Timestamp: {timestamp} ms")
-        for command in commands[:1]: # Show first command per timestamp
-            print(f"  - Command: {command['name']}, Raw Data (Hex): {command.get('data_hex', 'N/A')}")
-except FileNotFoundError:
-    print(f"Error: File not found at {brp_file_path}")
-except ValueError as e:
-    print(f"Error processing file: {e}")
+except Exception as e:
+    print(f"Error extracting data: {e}")
 ```
 
-## Data Structures and Internals
+## Internal Structure
 
-* `_H` (Huffman Decompressor Class): Manages the Huffman tree construction and decompression logic.
-    * `_N` (Node Class): An internal helper class representing nodes within the Huffman tree structure.
-    * `__init__`: Initializes the Huffman tree based on `G_FREQS`.
-    * `decompress(src)`: Performs Huffman decompression on the provided byte string.
-* `G_FREQS`: A hardcoded list defining the global frequencies used for Huffman tree construction, essential for correct decompression.
-* `CMD_NAMES`: A dictionary mapping numerical command identifiers to their corresponding string names. Access via `pybrp.CMD_NAMES`.
-* `_DataReader`: An internal utility class for sequential reading of various data types from a byte stream during command parsing.
-* `COMMAND_PARSERS`: An internal dictionary mapping command IDs to specific parsing functions, facilitating dynamic and structured argument extraction for different command types.
+* `_H`: Huffman decompressor class, pre-configured with `G_FREQS`.
+* `G_FREQS`: Global frequency table for Huffman tree construction.
+* `CMD_NAMES`: Dictionary mapping command IDs to their string names.
+* `COMMAND_PARSERS`: Maps command IDs to specific parsing functions for argument deserialization.
+* `_DataReader`: Internal helper for reading binary data streams.
 
 ## Error Handling
 
-The library's functions implement basic error handling for common issues such as `FileNotFoundError` and `ValueError` (e.g., incomplete Huffman codes during decompression). Within the `get_data` function, if `as_hex` is `False` and a command's argument parsing encounters an exception, the `'args'` field for that command will contain an error message, and the `'data_hex'` field will provide the raw hexadecimal payload for debugging.
+Functions raise standard Python exceptions (`FileNotFoundError`, `ValueError`) for file-related or decompression issues. `get_data` includes internal handling for parsing errors, providing raw hexadecimal data and an error message for problematic command payloads when `as_hex` is `False`.
