@@ -31,7 +31,7 @@ def console_progress(current, total):
 
 ### Getting Total Event Duration
 
-Find out the total duration of events in a `.brp` file.
+Find out the total duration of events in a `.brp` file. You can also pass an optional `progress` callback.
 
 ```python
 brp_file_path = "path/to/your/replay.brp"
@@ -60,11 +60,6 @@ try:
     # Example: Decompress a file
     decompress(huffman_decompressor, input_path, output_path)
     print(f"\nFile decompressed to: {output_path}")
-
-    # Example: Decompress with a progress callback
-    output_path_with_progress = "path/to/your/decompressed_file_progress.brp"
-    decompress(huffman_decompressor, input_path, output_path_with_progress, progress=console_progress)
-    print(f"\nFile decompressed to (with progress): {output_path_with_progress}")
 except Exception as e:
     print(f"Error decompressing file: {e}")
 ```
@@ -75,7 +70,7 @@ Get structured event data from a `.brp` file. By default, arguments are parsed i
 
 **Parameters**:
 * `as_hex=True`: Get raw hexadecimal payloads for command arguments instead of parsed values. Useful for debugging or unhandled command types.
-* `progress`: A callback function for progress updates (e.g., `console_progress`).
+* `progress`: (Optional) A callback function for progress updates (e.g., `console_progress`).
 
 ```python
 brp_file_path = "path/to/your/replay_data.brp"
@@ -95,21 +90,6 @@ try:
     for timestamp, commands in list(raw_event_data_hex.items())[:1]: # Showing first timestamp
         for command in commands[:1]: # Showing first command
             print(f"    - Command: {command['name']}, Data Hex: {command.get('data_hex', 'N/A')}")
-
-    # Example 3: Get parsed data with a progress callback
-    event_data_parsed_progress = get_data(huffman_decompressor, brp_file_path, as_hex=False, progress=console_progress)
-    print("\nExtracted Event Data (Parsed, With Progress):")
-    for timestamp, commands in list(event_data_parsed_progress.items())[:3]:
-        print(f"  Timestamp: {timestamp} ms")
-        for command in commands[:1]:
-            print(f"    - Command: {command['name']}, Args: {command.get('args', 'N/A')}")
-
-    # Example 4: Get raw hexadecimal data with a progress callback
-    event_data_hex_progress = get_data(huffman_decompressor, brp_file_path, as_hex=True, progress=console_progress)
-    print("\nExtracted Event Data (Raw Hex, With Progress):")
-    for timestamp, commands in list(event_data_hex_progress.items())[:1]:
-        for command in commands[:1]:
-            print(f"    - Command: {command['name']}, Raw Data (Hex): {command.get('data_hex', 'N/A')}")
 
 except Exception as e:
     print(f"Error extracting data: {e}")
