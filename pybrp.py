@@ -77,17 +77,18 @@ def get_duration(_h, brp_path, progress=None):
             if not raw_msg or raw_msg[0] != 1:
                 continue
             sub_off = 1
-            while sub_off < len(raw_msg):
-                try:
-                    sub_size = int.from_bytes(raw_msg[sub_off:sub_off+2], 'little')
-                except IndexError:
+            while sub_off + 2 <= len(raw_msg):
+                sub_size_bytes = raw_msg[sub_off:sub_off+2]
+                if len(sub_size_bytes) < 2:
                     break
-                except ValueError:
+                sub_size = int.from_bytes(sub_size_bytes, 'little')
+                sub_off += 2
+                if sub_off + sub_size > len(raw_msg):
                     break
-                sub_data = raw_msg[sub_off+2:sub_off+2+sub_size]
-                if sub_data and sub_data[0] == 0:
+                sub_data = raw_msg[sub_off:sub_off+sub_size]
+                if len(sub_data) >= 2 and sub_data[0] == 0:
                     total_ms += sub_data[1]
-                sub_off += 2 + sub_size
+                sub_off += sub_size
     if progress: progress(total_size, total_size)
     return total_ms
 
