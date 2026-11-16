@@ -10,6 +10,18 @@ It helps you out by:
 * **Structured Data Extraction**: Parses the messages and their arguments into a readable dictionary format.
 * **Progress Tracking**: Provides a way to track progress during file operations by passing a callback function.
 
+## Supported versions
+
+Works with replays from **BombSquad 1.7 and 1.8** (protocols 24-37 and 56+). The 1.8 format differs from 1.7 in three ways, all handled automatically:
+
+* **Header**: protocol 39+ adds an asset-package listing right after the 6-byte header (`u32` count, then `u32` length + bytes per package). Read it with `get_info(path)`.
+* **Framing**: protocol 44+ uses varint command lengths and zigzag-varint integers instead of `u16` lengths and fixed `int32`s.
+* **Merged time steps**: protocol 44+ may fold time steps into `StepSceneGraphAndTime` (65) and `TimeStepSceneGraphAndTime` (67). `get_data` reports these as a `StepSceneGraph` entry while advancing the clock.
+
+Files that are not replays, or that use a protocol the game itself refuses (the 1.8 dev protocols 38-55), now raise `ValueError` instead of silently reporting a duration of 0. A truncated final message (a replay still being written) is ignored and the duration up to that point is returned.
+
+Quick check from the command line: `python pybrp.py replay.brp`
+
 ## Installation
 
 Just copy the `pybrp.py` file into your project directory. No complex setup needed.
@@ -103,7 +115,8 @@ This library was developed by referencing BombSquad's publicly available C++ sou
 * `G_FREQS`: The global frequency table for Huffman tree construction, adapted directly from BombSquad's C++ source.
 * `CMD_NAMES`: A dictionary mapping command IDs to their string names.
 * `COMMAND_PARSERS`: Maps command IDs to functions responsible for parsing their specific arguments.
-* `_DataReader`: An internal utility for reading various data types from binary streams.
+* `_DataReader`: An internal utility for reading command arguments (fixed or compact integer layout).
+* `read_header`, `get_info`: Parse the file header (protocol version, 1.8 asset-package listing).
 
 ## Error Handling
 
