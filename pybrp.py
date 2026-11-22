@@ -32,26 +32,65 @@ class _H:
             self.nodes[s1].p=self.nodes[s2].p=nc-255
             self.nodes[nc].r,self.nodes[nc].l=s1,s2
             nc+=1
-    def decompress(self,src):
-        if not src:return b''
-        rem,comp=src[0]&15,src[0]>>7
-        if not comp:return src
-        out,ptr,l=bytearray(),src[1:],len(src)
-        bl=((l-1)*8)-rem;bit=0
-        while bit<bl:
-            m_bit=(ptr[bit>>3]>>(bit&7))&1;bit+=1
-            if m_bit:
-                n=510
-                while n>=256:
-                    if bit>=bl:raise ValueError("Incomplete Huffman code")
-                    p_bit=(ptr[bit>>3]>>(bit&7))&1;bit+=1
-                    n=self.nodes[n].l if p_bit==0 else self.nodes[n].r
+    _T = None
+    def _tables(self):
+        """Lookup tables over a 16 bit window (flag bit + <=15 bit code): for every
+        window, all complete symbols it holds and the bits they use. Built once."""
+        T = type(self)._T
+        if T is not None: return T
+        nodes = self.nodes
+        def one(w, pos):
+            if pos >= 16: return None
+            if (w >> pos) & 1:
+                n, q = 510, pos + 1
+                while n >= 256:
+                    if q >= 16: return None
+                    n = nodes[n].l if not (w >> q) & 1 else nodes[n].r
+                    q += 1
+                return n, q
+            if pos + 9 > 16: return None
+            return (w >> (pos + 1)) & 255, pos + 9
+        M, ML = [b''] * 65536, [0] * 65536
+        for w in range(65536):
+            pos, syms = 0, bytearray()
+            while True:
+                r = one(w, pos)
+                if r is None: break
+                syms.append(r[0]); pos = r[1]
+            M[w], ML[w] = bytes(syms), pos
+        type(self)._T = T = (M, ML)
+        return T
+    def decompress(self, src):
+        if not src: return b''
+        rem, comp = src[0] & 15, src[0] >> 7
+        if not comp: return src
+        bl = (len(src) - 1) * 8 - rem
+        p = src[1:] + b'\0\0\0'
+        M, ML = self._tables()
+        out = bytearray()
+        bit = 0
+        lim = bl - 16
+        while bit <= lim:  # fast path: whole 16 bit window is real data
+            bi = bit >> 3
+            w = ((p[bi] | p[bi+1] << 8 | p[bi+2] << 16) >> (bit & 7)) & 0xFFFF
+            out += M[w]
+            bit += ML[w]
+        nodes = self.nodes
+        while bit < bl:  # tail (<16 bits), bit exact like the original decoder
+            if (p[bit >> 3] >> (bit & 7)) & 1:
+                bit += 1
+                n = 510
+                while n >= 256:
+                    if bit >= bl: raise ValueError("Incomplete Huffman code")
+                    n = nodes[n].l if not (p[bit >> 3] >> (bit & 7)) & 1 else nodes[n].r
+                    bit += 1
                 out.append(n)
             else:
-                if bit+8>bl:break
-                bi,b_in_b=bit>>3,bit&7
-                val=ptr[bi]if b_in_b==0 else(ptr[bi]>>b_in_b)|(ptr[bi+1]<<(8-b_in_b))
-                out.append(val&255);bit+=8
+                bit += 1
+                if bit + 8 > bl: break
+                bi, bb = bit >> 3, bit & 7
+                out.append((p[bi] if bb == 0 else (p[bi] >> bb) | (p[bi+1] << (8 - bb))) & 255)
+                bit += 8
         return bytes(out)
 
 
@@ -226,6 +265,30 @@ def _step_ms(cmd, compact):
 
 # --------------------------------- public API -------------------------------
 
+def _scan_ms(raw, compact):
+    """Total ms advanced by one type-1 message; same result as summing
+    _step_ms over _iter_commands, but only parses the time commands."""
+    total, off, n = 0, 1, len(raw)
+    while off < n:
+        if compact:
+            b = raw[off]
+            if b < 128:
+                size = b; off += 1
+            else:
+                try: size, off = _varint(raw, off)
+                except IndexError: return total
+        else:
+            if off + 2 > n: return total
+            size = raw[off] | raw[off+1] << 8; off += 2
+        if off + size > n: return total
+        if size:
+            c = raw[off]
+            if c == 0 or (compact and (c == C_STEP_TIME or c == C_TIME_STEP_TIME)):
+                s = _step_ms(raw[off:off+size], compact)
+                if s: total += s[0] + s[1]
+        off += size
+    return total
+
 def get_duration(_h, brp_path, progress=None):
     """Total duration in ms. Raises ValueError on unreadable/unsupported files."""
     total_ms = 0
@@ -234,9 +297,7 @@ def get_duration(_h, brp_path, progress=None):
         compact = read_header(f)['compact']
         for raw in _iter_messages(f, _h, total_size, progress):
             if not raw or raw[0] != 1: continue
-            for cmd in _iter_commands(raw, compact):
-                s = _step_ms(cmd, compact)
-                if s: total_ms += s[0] + s[1]
+            total_ms += _scan_ms(raw, compact)
     if progress: progress(total_size, total_size)
     return total_ms
 
